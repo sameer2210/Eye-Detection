@@ -15,7 +15,7 @@ class Settings(BaseModel):
     log_level: str = Field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
 
     # Model Configuration
-    model_path: str = Field(default_factory=lambda: os.getenv("MODEL_PATH", "yolov8s-world.pt"))
+    model_path: str = Field(default_factory=lambda: os.getenv("MODEL_PATH", "models/yolov8s-world.pt"))
     confidence_threshold: float = Field(
         default_factory=lambda: float(os.getenv("CONFIDENCE_THRESHOLD", "0.008"))
     )
