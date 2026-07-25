@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=70.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eye-service"
+version = "1.0.0"
+description = "Eye Detection Service Production Runtime"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.100.0",
+    "uvicorn>=0.20.0",
+    "pydantic>=2.0.0",
+    "httpx>=0.24.0",
+    "psutil>=5.8.0",
+    "ultralytics>=8.0.0",
+    "opencv-python>=4.6.0",
+    "numpy>=1.23.0",
+    "pillow>=9.0.0",
+    "torch>=2.0.0",
+    "torchvision>=0.15.0",
+]
