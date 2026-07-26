@@ -1,6 +1,7 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
 """Main entrypoint for Eye Detection Service running FastAPI application with Uvicorn."""
 
+import os
 import sys
 import time
 import uuid
@@ -61,11 +62,19 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
-# CORS middleware for mobile/web apps
+# Configurable CORS middleware adhering to W3C specification
+cors_origins_str = os.getenv("CORS_ORIGINS", "*")
+cors_origins = [o.strip() for o in cors_origins_str.split(",") if o.strip()]
+
+# W3C CORS Compliance: Access-Control-Allow-Origin: * cannot be used with Access-Control-Allow-Credentials: true
+allow_credentials = True
+if "*" in cors_origins:
+    allow_credentials = False
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
