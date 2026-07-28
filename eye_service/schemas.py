@@ -15,7 +15,7 @@ class BoundingBox(BaseModel):
 
 
 class EyeDetectionResponse(BaseModel):
-    """Standardized API response for zero-shot eye detection request."""
+    """Standardized API response for eye detection request."""
 
     success: bool = Field(..., description="Indicates whether the request was processed successfully")
     eyeDetected: bool = Field(..., description="True if a human eye was detected above threshold")
@@ -30,7 +30,10 @@ class HealthCheckResponse(BaseModel):
     """API response for server health check endpoint."""
 
     status: str = Field(..., description="Service status (e.g. 'ok')")
-    model_loaded: bool = Field(..., description="Whether the YOLO-World model is initialized")
+    model_loaded: bool = Field(..., description="Whether the YOLO model is initialized")
+    model_path: str = Field(default="models/best.pt", description="Path to loaded model weights")
+    framework: str = Field(default="Ultralytics YOLOv8", description="ML framework description")
+    readiness: bool = Field(default=True, description="Service readiness status")
     device: str = Field(..., description="Inference execution device ('cpu' or 'cuda')")
     version: str = Field(..., description="Service version string")
 

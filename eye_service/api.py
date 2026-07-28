@@ -3,7 +3,7 @@
 
 import logging
 import uuid
-from fastapi import APIRouter, File, UploadFile, Request, status
+from fastapi import APIRouter, File, UploadFile, Request, Response, status
 from fastapi.responses import JSONResponse
 
 import ultralytics
@@ -21,17 +21,36 @@ router = APIRouter()
 @router.get(
     "/health",
     response_model=HealthCheckResponse,
+    responses={
+        200: {"description": "Service is healthy and model is loaded"},
+        503: {"description": "Service is unready or model failed to load"},
+    },
     summary="Health check",
-    description="Check whether the Eye Detection service and YOLO-World model are healthy and ready for inference.",
+    description="Check whether the Eye Detection service and custom YOLOv8 model are healthy and ready for inference.",
 )
-async def health_check():
-    """Health check endpoint returning service status, model load status, and device info."""
+async def health_check(response: Response):
+    """Health check endpoint returning service status, model load status, framework details, and device info."""
     settings = get_settings()
     manager = EyeModelManager.get_instance()
 
+    if not manager.is_loaded:
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return HealthCheckResponse(
+            status="unhealthy",
+            model_loaded=False,
+            model_path=settings.model_path,
+            framework="Ultralytics YOLOv8",
+            readiness=False,
+            device=settings.device,
+            version=ultralytics.__version__,
+        )
+
     return HealthCheckResponse(
         status="ok",
-        model_loaded=manager.is_loaded,
+        model_loaded=True,
+        model_path=settings.model_path,
+        framework="Ultralytics YOLOv8",
+        readiness=True,
         device=settings.device,
         version=ultralytics.__version__,
     )
@@ -47,13 +66,13 @@ async def health_check():
         500: {"model": ErrorResponse, "description": "Internal server error during detection"},
     },
     summary="Detect eye in image",
-    description="Zero-shot prediction endpoint determining whether an uploaded image contains a human eye.",
+    description="Prediction endpoint determining whether an uploaded image contains a human eye using custom YOLOv8.",
 )
 def detect_eye(
     request: Request,
     file: UploadFile = File(..., description="Image file (JPEG, PNG, WEBP, BMP)"),
 ):
-    """Synchronous endpoint executing zero-shot eye detection off the asyncio event loop.
+    """Synchronous endpoint executing eye detection using custom YOLOv8 model off the asyncio event loop.
 
     Args:
         request (Request): FastAPI request object for extracting trace IDs.

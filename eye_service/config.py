@@ -15,11 +15,11 @@ class Settings(BaseModel):
     log_level: str = Field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
 
     # Model Configuration
-    model_path: str = Field(default_factory=lambda: os.getenv("MODEL_PATH", "models/yolov8s-world.pt"))
+    model_path: str = Field(default_factory=lambda: os.getenv("MODEL_PATH", "models/best.pt"))
     confidence_threshold: float = Field(
-        default_factory=lambda: float(os.getenv("CONFIDENCE_THRESHOLD", "0.008"))
+        default_factory=lambda: float(os.getenv("CONFIDENCE_THRESHOLD", "0.40"))
     )
-    prompt: str = Field(default_factory=lambda: os.getenv("PROMPT", "eye, human eye, eyes, iris, pupil"))
+    image_size: int = Field(default_factory=lambda: int(os.getenv("IMAGE_SIZE", "640")))
     device: str = Field(default_factory=lambda: os.getenv("DEVICE", "cpu"))
 
     # Security & Image Validation Configuration

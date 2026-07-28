@@ -32,10 +32,10 @@ async def lifespan(app: FastAPI):
     """Application lifecycle context manager performing model pre-loading and cleanup."""
     logger.info("Initializing Eye Detection Service...")
     logger.info(
-        "Configured Settings: model_path=%s, prompt='%s', threshold=%.2f, device=%s",
+        "Configured Settings: model_path=%s, threshold=%.2f, image_size=%d, device=%s",
         settings.model_path,
-        settings.prompt,
         settings.confidence_threshold,
+        settings.image_size,
         settings.device,
     )
 
@@ -43,7 +43,7 @@ async def lifespan(app: FastAPI):
     try:
         manager = EyeModelManager.get_instance()
         manager.load_model()
-        logger.info("YOLO-World Eye Detector ready to serve requests.")
+        logger.info("Custom YOLOv8 Eye Detector ready to serve requests.")
     except Exception as exc:
         logger.critical("Failed to load model during startup: %s", exc, exc_info=True)
         raise exc
@@ -54,8 +54,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Zero-Shot Eye Detection API",
-    description="Production-ready Eye Detection Service powered by Ultralytics YOLO-World zero-shot model.",
+    title="Eye Detection API",
+    description="Production-ready Eye Detection Service powered by custom-trained Ultralytics YOLOv8 model.",
     version="1.0.0",
     lifespan=lifespan,
     docs_url="/docs",

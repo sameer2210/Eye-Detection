@@ -10,6 +10,10 @@ from eye_service.config import get_settings
 from eye_service.schemas import BoundingBox
 
 
+# Set maximum pixel limit to prevent decompression bomb Denial-of-Service attacks
+Image.MAX_IMAGE_PIXELS = 64_000_000
+
+
 class ImageValidationError(ValueError):
     """Custom exception raised when uploaded image fails security or format validation."""
 
@@ -84,16 +88,9 @@ def load_and_preprocess_image(image_bytes: bytes) -> tuple[np.ndarray, float, fl
 
     try:
         pil_img = Image.open(io.BytesIO(image_bytes))
-        pil_img.verify()  # Verify integrity
-    except Exception as e:
-        raise ImageValidationError(f"Corrupted or malformed image data: {str(e)}", status_code=400)
-
-    # Re-open after verify() (PIL requires re-opening after verify)
-    try:
-        pil_img = Image.open(io.BytesIO(image_bytes))
         pil_img = ImageOps.exif_transpose(pil_img)
     except Exception as e:
-        raise ImageValidationError(f"Failed to decode image: {str(e)}", status_code=400)
+        raise ImageValidationError(f"Corrupted or malformed image data: {str(e)}", status_code=400)
 
     # Convert to RGB (handles RGBA, Palette, Grayscale, etc.)
     if pil_img.mode != "RGB":

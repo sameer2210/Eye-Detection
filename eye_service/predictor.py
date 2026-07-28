@@ -1,12 +1,12 @@
 # Ultralytics 🚀 AGPL-3.0 License - https://ultralytics.com/license
-"""Inference predictor pipeline for zero-shot eye detection using Ultralytics YOLO-World."""
+"""Inference predictor pipeline for eye detection using custom-trained Ultralytics YOLOv8."""
 
 import time
 import logging
 import numpy as np
 
 from eye_service.config import get_settings
-from eye_service.model_loader import get_model
+from eye_service.model_loader import EyeModelManager
 from eye_service.schemas import EyeDetectionResponse, BoundingBox
 from eye_service.utils import load_and_preprocess_image, format_bounding_box
 
@@ -14,14 +14,14 @@ logger = logging.getLogger("eye_service.predictor")
 
 
 class EyePredictor:
-    """Predictor class orchestrating image loading, YOLO-World inference, and output formatting."""
+    """Predictor class orchestrating image loading, YOLOv8 inference, and output formatting."""
 
     def __init__(self):
         """Initialize EyePredictor with settings reference."""
         self.settings = get_settings()
 
     def predict(self, image_bytes: bytes) -> EyeDetectionResponse:
-        """Execute complete zero-shot eye detection pipeline on raw input image bytes.
+        """Execute complete eye detection pipeline on raw input image bytes.
 
         Args:
             image_bytes (bytes): Raw bytes of input image file.
@@ -34,17 +34,20 @@ class EyePredictor:
         # 1. Preprocess and validate image
         img_bgr, scale_x, scale_y = load_and_preprocess_image(image_bytes)
 
-        # 2. Get loaded model instance
-        model = get_model()
+        # 2. Get loaded model manager & instance
+        manager = EyeModelManager.get_instance()
+        model = manager.load_model()
 
-        # 3. Run inference
+        # 3. Run thread-safe inference
         conf_threshold = self.settings.confidence_threshold
-        results = model.predict(
-            source=img_bgr,
-            conf=conf_threshold,
-            device=self.settings.device,
-            verbose=False,
-        )
+        with manager.inference_lock:
+            results = model.predict(
+                source=img_bgr,
+                conf=conf_threshold,
+                imgsz=self.settings.image_size,
+                device=self.settings.device,
+                verbose=False,
+            )
 
         top_box: BoundingBox | None = None
         top_confidence = 0.0
