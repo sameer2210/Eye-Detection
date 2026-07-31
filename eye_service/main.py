@@ -32,11 +32,12 @@ async def lifespan(app: FastAPI):
     """Application lifecycle context manager performing model pre-loading and cleanup."""
     logger.info("Initializing Eye Detection Service...")
     logger.info(
-        "Configured Settings: model_path=%s, threshold=%.2f, image_size=%d, device=%s",
+        "Configured Settings: model_path=%s, threshold=%.2f, image_size=%d, device=%s, port=%d",
         settings.model_path,
         settings.confidence_threshold,
         settings.image_size,
         settings.device,
+        settings.port,
     )
 
     # Initialize and pre-warm model on startup
@@ -81,8 +82,8 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def add_request_id_and_timing(request: Request, call_next):
-    """Middleware attaching unique request IDs and tracking request duration."""
+async def add_security_headers_and_timing(request: Request, call_next):
+    """Middleware attaching security headers, unique request IDs, and tracking request duration."""
     request_id = request.headers.get("X-Request-ID", str(uuid.uuid4()))
     request.state.request_id = request_id
 
@@ -90,8 +91,14 @@ async def add_request_id_and_timing(request: Request, call_next):
     response = await call_next(request)
     elapsed_ms = (time.perf_counter() - start_time) * 1000
 
+    # Tracing and Performance Headers
     response.headers["X-Request-ID"] = request_id
     response.headers["X-Response-Time-MS"] = f"{elapsed_ms:.2f}"
+
+    # Production Security Headers
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
 
     logger.info(
         "[%s] %s %s -> status=%d (%.2f ms)",

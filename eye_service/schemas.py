@@ -2,7 +2,7 @@
 """Pydantic schemas for request and response validation in Eye Detection Service."""
 
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class BoundingBox(BaseModel):
@@ -28,6 +28,8 @@ class EyeDetectionResponse(BaseModel):
 
 class HealthCheckResponse(BaseModel):
     """API response for server health check endpoint."""
+
+    model_config = ConfigDict(protected_namespaces=())
 
     status: str = Field(..., description="Service status (e.g. 'ok')")
     model_loaded: bool = Field(..., description="Whether the YOLO model is initialized")

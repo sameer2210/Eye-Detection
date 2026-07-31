@@ -18,6 +18,24 @@ logger = logging.getLogger("eye_service.api")
 router = APIRouter()
 
 
+def _get_dynamic_model_version(manager: EyeModelManager) -> str:
+    """Safely extract model or framework version string without throwing exceptions."""
+    try:
+        if manager.is_loaded and manager.model is not None:
+            ckpt_version = getattr(manager.model, "version", None)
+            if ckpt_version and isinstance(ckpt_version, str):
+                return ckpt_version
+            if hasattr(manager.model, "ckpt") and isinstance(manager.model.ckpt, dict):
+                version_in_ckpt = manager.model.ckpt.get("version")
+                if version_in_ckpt:
+                    return str(version_in_ckpt)
+        if hasattr(ultralytics, "__version__"):
+            return str(ultralytics.__version__)
+    except Exception as exc:
+        logger.debug("Model version detection fallback triggered: %s", exc)
+    return "unknown"
+
+
 @router.get(
     "/health",
     response_model=HealthCheckResponse,
@@ -32,6 +50,7 @@ async def health_check(response: Response):
     """Health check endpoint returning service status, model load status, framework details, and device info."""
     settings = get_settings()
     manager = EyeModelManager.get_instance()
+    version_str = _get_dynamic_model_version(manager)
 
     if not manager.is_loaded:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
@@ -42,7 +61,7 @@ async def health_check(response: Response):
             framework="Ultralytics YOLOv8",
             readiness=False,
             device=settings.device,
-            version=ultralytics.__version__,
+            version=version_str,
         )
 
     return HealthCheckResponse(
@@ -52,7 +71,7 @@ async def health_check(response: Response):
         framework="Ultralytics YOLOv8",
         readiness=True,
         device=settings.device,
-        version=ultralytics.__version__,
+        version=version_str,
     )
 
 

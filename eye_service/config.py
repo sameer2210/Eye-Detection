@@ -3,15 +3,17 @@
 
 import os
 from functools import lru_cache
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class Settings(BaseModel):
     """Application settings with defaults overrideable by environment variables."""
 
+    model_config = ConfigDict(protected_namespaces=())
+
     # Server Configuration
     host: str = Field(default_factory=lambda: os.getenv("HOST", "0.0.0.0"))
-    port: int = Field(default_factory=lambda: int(os.getenv("PORT", "8000")))
+    port: int = Field(default_factory=lambda: int(os.getenv("PORT", "8001")))
     log_level: str = Field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
 
     # Model Configuration
