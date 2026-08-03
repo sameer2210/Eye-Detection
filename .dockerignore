@@ -22,6 +22,8 @@ venv/
 ENV/
 .idea
 .vscode
+.git
+.github
 *.swp
 *.swo
 .DS_Store

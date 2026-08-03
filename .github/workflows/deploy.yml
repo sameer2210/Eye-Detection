@@ -1,0 +1,182 @@
+name: Production Build and Deploy to Google Cloud Run
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  test:
+    name: Run Automated Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install CPU PyTorch & Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch==2.4.1+cpu torchvision==0.19.1+cpu --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Execute Pytest Suite
+        run: |
+          pytest --verbose
+
+  build-and-verify:
+    name: Build & Verify Container Image Locally
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Temporary Container Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: eye-service:test-local
+          cache-from: type=gha
+          cache-to: type=gha, mode=max
+
+      - name: Execute Pre-Push Container Health Verification
+        run: |
+          echo "Starting container locally for pre-push health check..."
+          docker run -d --name local-test-container -p 8001:8001 -e PORT=8001 eye-service:test-local
+          
+          # Poll container health for up to 30 seconds
+          SUCCESS=0
+          for i in {1..10}; do
+            sleep 3
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/health || true)
+            echo "Health probe attempt $i: HTTP Status $HTTP_STATUS"
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              SUCCESS=1
+              break
+            fi
+          done
+
+          docker logs local-test-container
+          docker rm -f local-test-container
+
+          if [ $SUCCESS -ne 1 ]; then
+            echo "Pre-push container health check FAILED!"
+            exit 1
+          fi
+          echo "Pre-push container health check PASSED!"
+
+  deploy:
+    name: Authenticate, Push & Deploy to Cloud Run
+    needs: build-and-verify
+    runs-on: ubuntu-latest
+    env:
+      GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+      GCP_REGION: ${{ secrets.GCP_REGION }}
+      ARTIFACT_REPOSITORY: ${{ secrets.ARTIFACT_REPOSITORY }}
+      CLOUD_RUN_SERVICE: ${{ secrets.CLOUD_RUN_SERVICE }}
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        if: ${{ secrets.GCP_WIF_PROVIDER != '' }}
+        id: auth-wif
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
+
+      - name: Authenticate to Google Cloud (Service Account Key Fallback)
+        if: ${{ secrets.GCP_WIF_PROVIDER == '' && secrets.GCP_SA_KEY != '' }}
+        id: auth-key
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Authorize Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker ${{ env.GCP_REGION }}-docker.pkg.dev --quiet
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and Push Image to Artifact Registry
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/eye-service:${{ github.sha }}
+            ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/eye-service:latest
+          cache-from: type=gha
+          cache-to: type=gha, mode=max
+
+      - name: Deploy Revision to Google Cloud Run (Zero Traffic)
+        id: deploy-revision
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.CLOUD_RUN_SERVICE }}
+          region: ${{ env.GCP_REGION }}
+          image: ${{ env.GCP_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.ARTIFACT_REPOSITORY }}/eye-service:${{ github.sha }}
+          no_traffic: true
+          flags: >-
+            --allow-unauthenticated
+            --memory=1Gi
+            --cpu=1
+            --concurrency=80
+            --timeout=300s
+            --execution-environment=gen2
+            --cpu-boost
+            --min-instances=0
+            --max-instances=10
+            --set-env-vars=LOG_LEVEL=INFO
+
+      - name: Execute Post-Deployment Candidate Health Verification
+        run: |
+          CANDIDATE_URL="${{ steps.deploy-revision.outputs.url }}"
+          echo "Verifying deployed revision health at ${CANDIDATE_URL}/health..."
+          
+          SUCCESS=0
+          for i in {1..10}; do
+            sleep 3
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${CANDIDATE_URL}/health" || true)
+            echo "Post-deploy health probe attempt $i: HTTP Status $HTTP_STATUS"
+            if [ "$HTTP_STATUS" -eq 200 ]; then
+              SUCCESS=1
+              break
+            fi
+          done
+
+          if [ $SUCCESS -ne 1 ]; then
+            echo "Post-deployment candidate health verification FAILED! Traffic will NOT be switched."
+            exit 1
+          fi
+          echo "Post-deployment health check PASSED!"
+
+      - name: Switch Production Traffic to Verified Revision
+        run: |
+          echo "Routing 100% production traffic to new verified revision..."
+          gcloud run services update-traffic ${{ env.CLOUD_RUN_SERVICE }} \
+            --region=${{ env.GCP_REGION }} \
+            --to-latest

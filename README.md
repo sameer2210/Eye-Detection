@@ -9,7 +9,7 @@
 ![Python](https://img.shields.io/badge/python-3.11-3776AB.svg)
 ![Docker](https://img.shields.io/badge/docker%20size-454%20MB-blue.svg)
 
----
+--,-
 
 ## Project Overview
 
@@ -173,7 +173,7 @@ X-Response-Time-MS: 2.03
 #### 2. Detect Eye in Image
 `POST /detect-eye`
 
-**Request Header:** `Content-Type: multipart/form-data`  
+**Request Header:** `Content-Type: multipart/form-data`
 **Body Parameter:** `file` (UploadFile containing `JPEG`, `PNG`, `WEBP`, or `BMP` image)
 
 **Response (`200 OK` — Eye Detected):**
@@ -317,12 +317,57 @@ Empirical metrics collected from production container execution:
 
 ---
 
-## Deployment Target
+## Automated GitHub & GCP Cloud Run Deployment
 
-The Eye Detection Service is packaged and verified for deployment to:
-- **Google Cloud Run** (Fully supported via `$PORT` environment variable injection and non-root execution).
-- **Kubernetes / Google Kubernetes Engine (GKE)** (Fully supported via `CMD` instruction and non-root security context).
-- **Docker Engine / Swarm**.
+The Eye Detection Service is configured for zero-downtime, automated source-to-cloud deployment on **Google Cloud Run** using **GitHub Actions**.
+
+### 1. One-Time Google Cloud Platform (GCP) Setup
+
+Execute the following `gcloud` CLI commands to initialize Artifact Registry and IAM permissions:
+
+```bash
+# Set GCP Project ID
+export PROJECT_ID="your-gcp-project-id"
+export REGION="us-central1"
+gcloud config set project $PROJECT_ID
+
+# Enable required Google APIs
+gcloud services enable \
+  artifactregistry.googleapis.com \
+  run.googleapis.com \
+  cloudbuild.googleapis.com \
+  iamcredentials.googleapis.com
+
+# Create Artifact Registry Repository for Docker images
+gcloud artifacts repositories create eye-detection \
+  --repository-format=docker \
+  --location=$REGION \
+  --description="Eye Detection Microservice Docker Repository"
+```
+
+### 2. Configure GitHub Repository Secrets
+
+Add the following environment secrets in your GitHub repository (**Settings -> Secrets and variables -> Actions**):
+
+| Secret Name | Description | Example / Required |
+| :--- | :--- | :--- |
+| `GCP_PROJECT_ID` | Your Google Cloud Project ID | `my-ml-project-12345` (Required) |
+| `GCP_REGION` | Target GCP region for Artifact Registry & Cloud Run | `us-central1` (Required) |
+| `ARTIFACT_REPOSITORY` | Artifact Registry Docker repository name | `eye-detection` (Required) |
+| `CLOUD_RUN_SERVICE` | Google Cloud Run service name | `eye-detection-service` (Required) |
+| `GCP_WIF_PROVIDER` | Workload Identity Provider resource ID (Preferred Auth) | `projects/123/locations/global/...` |
+| `GCP_WIF_SERVICE_ACCOUNT` | Workload Identity Service Account Email (Preferred Auth) | `github-runner@project.iam...` |
+| `GCP_SA_KEY` | *(Fallback)* Service Account JSON key string | `{"type": "service_account"...}` |
+
+### 3. Automated CI/CD Workflow Pipeline
+
+On every `git push` to `main`, `.github/workflows/deploy.yml` automatically:
+1. Executes `pytest` unit test suite.
+2. Authenticates to Google Cloud using WIF / SA Credentials.
+3. Builds the multi-stage Docker container (`python:3.11-slim-bookworm`).
+4. Pushes tagged image (`:latest` and `:${{ github.sha }}`) to Artifact Registry.
+5. Deploys container to Google Cloud Run with dynamic `${PORT}` binding and non-root execution (`appuser:appgroup`).
+
 
 ---
 

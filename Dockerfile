@@ -73,5 +73,5 @@ EXPOSE 8001
 HEALTHCHECK --interval=15s --timeout=5s --start-period=5s --retries=3 \
   CMD python -c "import urllib.request, os; port = os.getenv('PORT', '8001'); urllib.request.urlopen(f'http://localhost:{port}/health', timeout=3)" || exit 1
 
-# Production CMD instruction allowing flexible override
-CMD ["uvicorn", "eye_service.main:app", "--host", "0.0.0.0", "--port", "8001"]
+# Dynamic CMD instruction supporting Google Cloud Run dynamic ${PORT} injection
+CMD ["sh", "-c", "exec uvicorn eye_service.main:app --host 0.0.0.0 --port ${PORT:-8001}"]
